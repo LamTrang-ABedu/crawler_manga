@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: tranh18-crawler
+    name: truyenqq-crawler
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
