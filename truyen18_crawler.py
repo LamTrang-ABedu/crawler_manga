@@ -23,6 +23,11 @@ class Truyen18Crawler:
                 "thumbnail": thumbnail,
                 "url": link
             })
+
+        if not comics:
+            # log đoạn đầu HTML nếu không có truyện nào được crawl
+            return {"page": page, "comics": [], "html_snippet": res.text[:1000]}
+
         return {"page": page, "comics": comics}
 
     def get_chapters(self, comic_id):
