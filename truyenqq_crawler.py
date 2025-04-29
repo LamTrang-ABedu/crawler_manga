@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 
 class TruyenQQCrawler:
-    BASE_URL = "https://truyenqqgo.com"
+    BASE_URL = "https://nettruyen3q.net"
 
     def get_comics(self, page=1):
         url = f"{self.BASE_URL}/truyen-moi-cap-nhat/trang-{page}.html"
