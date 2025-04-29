@@ -11,13 +11,15 @@ class Tranh18Crawler:
         soup = BeautifulSoup(res.text, "html.parser")
 
         comics = []
-        for item in soup.select(".page-item-detail"):
+        for item in soup.select(".c-image-hover"):
             a = item.select_one("a")
-            if not a: continue
-            title = a.get("title", "").strip()
+            img = item.select_one("img")
+            if not a or not img:
+                continue
+            title = img.get("alt", "").strip()
             link = a["href"]
             comic_id = link.rstrip("/").split("/")[-1]
-            thumbnail = item.select_one("img")["src"]
+            thumbnail = img["src"]
             comics.append({
                 "id": comic_id,
                 "title": title,
@@ -34,12 +36,10 @@ class Tranh18Crawler:
 
         title = soup.select_one("h1").text.strip()
         chapters = []
-        for li in soup.select(".list-chapter li"):
-            a = li.select_one("a")
-            if not a: continue
-            chapter_title = a.text.strip()
+        for a in soup.select(".wp-manga-chapter > a"):
             chapter_url = a["href"]
             chapter_id = chapter_url.rstrip("/").split("/")[-1]
+            chapter_title = a.text.strip()
             chapters.append({
                 "id": chapter_id,
                 "title": chapter_title,
@@ -53,7 +53,7 @@ class Tranh18Crawler:
         res = requests.get(url, headers=headers, timeout=20)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        images = [img["src"] for img in soup.select(".chapter-content img")]
+        images = [img["src"] for img in soup.select(".reading-content img")]
         return {
             "comic_id": comic_id,
             "chapter_id": chapter_id,
