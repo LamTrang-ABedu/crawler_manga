@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: mangahentai-crawler
+    name: tranh18-crawler
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
