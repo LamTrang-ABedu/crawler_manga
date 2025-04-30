@@ -1,8 +1,8 @@
 from flask import Flask, jsonify, request
-from truyenqq_crawler import TruyenQQCrawler
+from tranh18_crawler import Tranh18Crawler
 
 app = Flask(__name__)
-crawler = TruyenQQCrawler()
+crawler = Tranh18Crawler()
 
 @app.route('/api/comics', methods=['GET'])
 def get_comics():
