@@ -17,7 +17,7 @@ app = FastAPI(
 )
 
 # URL mục tiêu
-TARGET_URL = "https://tranh18.com/" # Hoặc một trang cụ thể chứa danh sách, ví dụ: trang mới cập nhật
+TARGET_URL = "https://m.tranh18.com/comics?page=0" # Hoặc một trang cụ thể chứa danh sách, ví dụ: trang mới cập nhật
 
 # Headers để giả lập trình duyệt
 HEADERS = {
