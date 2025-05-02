@@ -1,12 +1,37 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 import requests
 from bs4 import BeautifulSoup
 import html
+import json
+import os
+import boto3
+from datetime import datetime
 
 app = Flask(__name__)
 
 BASE_URL = "https://tranh18x.com"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+R2_BUCKET = "hopehub-storage"
+R2_ENDPOINT = "https://pub-a849c091b30844d5aee5e88b7f6fb5d1.r2.cloudflarestorage.com"  # Replace this with actual endpoint
+R2_ACCESS_KEY = os.getenv("R2_ACCESS_KEY")
+R2_SECRET_KEY = os.getenv("R2_SECRET_KEY")
+
+s3 = boto3.client(
+    's3',
+    endpoint_url=R2_ENDPOINT,
+    aws_access_key_id=R2_ACCESS_KEY,
+    aws_secret_access_key=R2_SECRET_KEY
+)
+
+def upload_to_r2(key, data):
+    s3.put_object(
+        Bucket=R2_BUCKET,
+        Key=key,
+        Body=json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'),
+        ContentType='application/json'
+    )
+    return f"{R2_ENDPOINT}/{R2_BUCKET}/{key}"
 
 def get_comic_list(max_page=359):
     all_comics = []
@@ -71,26 +96,30 @@ def get_images(chapter_url):
         image_urls.append(true_url)
     return image_urls
 
-@app.route("/api/comics", methods=["GET"])
-def api_comic_list():
+def sync_all():
+    result = []
     comics = get_comic_list()
-    return jsonify({"total": len(comics), "comics": comics})
+    for comic in comics:
+        comic_data = {
+            "name": comic["name"],
+            "image": comic["image"],
+            "url": comic["url"],
+            "chapters": []
+        }
+        chapters = get_chapters(comic["url"])
+        for chap in chapters:
+            images = get_images(chap["url"])
+            comic_data["chapters"].append({
+                "name": chap["name"],
+                "url": chap["url"],
+                "images": images
+            })
+        result.append(comic_data)
 
-@app.route("/api/chapters", methods=["GET"])
-def api_chapter_list():
-    comic_url = request.args.get("url")
-    if not comic_url:
-        return jsonify({"error": "Missing 'url' parameter"}), 400
-    chapters = get_chapters(comic_url)
-    return jsonify({"total": len(chapters), "chapters": chapters})
-
-@app.route("/api/images", methods=["GET"])
-def api_image_list():
-    chapter_url = request.args.get("url")
-    if not chapter_url:
-        return jsonify({"error": "Missing 'url' parameter"}), 400
-    images = get_images(chapter_url)
-    return jsonify({"total": len(images), "images": images})
+    key = "tranh18x/full_catalog.json"
+    url = upload_to_r2(key, {"total": len(result), "comics": result})
+    return jsonify({"stored_url": url, "total": len(result)})
 
 if __name__ == "__main__":
+    sync_all()
     app.run(host="0.0.0.0", port=8000)
