@@ -1,3 +1,4 @@
+import threading
 from flask import Flask, jsonify
 import requests
 from bs4 import BeautifulSoup
@@ -6,15 +7,15 @@ import json
 import os
 import boto3
 from datetime import datetime
-import threading
 
 app = Flask(__name__)
 
 BASE_URL = "https://tranh18x.com"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+TIMEOUT = 15
 
 R2_BUCKET = "hopehub-storage"
-R2_ENDPOINT = "https://pub-a849c091b30844d5aee5e88b7f6fb5d1.r2.cloudflarestorage.com"  # Replace this with actual endpoint
+R2_ENDPOINT = "https://pub-a849c091b30844d5aee5e88b7f6fb5d1.r2.cloudflarestorage.com"
 R2_ACCESS_KEY = os.getenv("R2_ACCESS_KEY")
 R2_SECRET_KEY = os.getenv("R2_SECRET_KEY")
 
@@ -27,23 +28,32 @@ s3 = boto3.client(
 
 def upload_to_r2(key, data):
     try:
-        print(f"[UPLOAD] starting uploade to R2: {key}")
         s3.put_object(
             Bucket=R2_BUCKET,
             Key=key,
             Body=json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'),
             ContentType='application/json'
         )
-        print(f"[UPLOAD] Successfully uploaded to R2: {key}")
-        return f"{R2_ENDPOINT}/{R2_BUCKET}/{key}"
+        print(f"[UPLOAD] {key} uploaded successfully")
     except Exception as e:
-        print(f"[UPLOAD ERROR] {e}")
+        print(f"[UPLOAD ERROR] {key}: {e}")
+
+def read_from_r2(key):
+    try:
+        res = s3.get_object(Bucket=R2_BUCKET, Key=key)
+        return json.loads(res['Body'].read().decode('utf-8'))
+    except:
+        return None
 
 def get_comic_list(max_page=359):
     all_comics = []
     for page in range(1, max_page + 1):
         url = f"{BASE_URL}/comics?page={page}"
-        res = requests.get(url, headers=HEADERS, timeout=15)
+        try:
+            res = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        except Exception as e:
+            print(f"[ERROR] Failed to fetch page {page}: {e}")
+            break
         if res.status_code != 200:
             break
 
@@ -67,7 +77,10 @@ def get_comic_list(max_page=359):
     return all_comics
 
 def get_chapters(comic_url):
-    res = requests.get(comic_url, headers=HEADERS, timeout=15)
+    try:
+        res = requests.get(comic_url, headers=HEADERS, timeout=TIMEOUT)
+    except:
+        return []
     if res.status_code != 200:
         return []
 
@@ -87,62 +100,61 @@ def get_chapters(comic_url):
 
 def get_images(chapter_url):
     try:
-        res = requests.get(chapter_url, headers=HEADERS, timeout=15)
-        if res.status_code != 200:
-            return []
-    
-        soup = BeautifulSoup(res.text, "html.parser")
-        img_tags = soup.select("div.comiclist div.comicpage img.lazy")
-        image_urls = []
-        for img in img_tags:
-            raw_url = img.get("data-original", "")
-            if "?u=" in raw_url:
-                true_url = raw_url.split("?u=")[-1]
-            else:
-                true_url = raw_url
-            image_urls.append(true_url)
-        return image_urls
-    except Exception as e:
-        print(f"[ERROR] Failed to crawl chapter {chap['name']}: {e}")
+        res = requests.get(chapter_url, headers=HEADERS, timeout=TIMEOUT)
+    except:
+        return []
+    if res.status_code != 200:
+        return []
+
+    soup = BeautifulSoup(res.text, "html.parser")
+    img_tags = soup.select("div.comiclist div.comicpage img.lazy")
+    image_urls = []
+    for img in img_tags:
+        raw_url = img.get("data-original", "")
+        if "?u=" in raw_url:
+            true_url = raw_url.split("?u=")[-1]
+        else:
+            true_url = raw_url
+        image_urls.append(true_url)
+    return image_urls
 
 def sync_all():
-    result = []
-    try:
-        comics = get_comic_list()
-        for i, comic in enumerate(comics):
-            print(f"[SYNC] [{i+1}/{len(comics)}] Crawling: {comic['name']}")
-            comic_data = {
-                "name": comic["name"],
-                "image": comic["image"],
-                "url": comic["url"],
-                "chapters": []
-            }
-            chapters = get_chapters(comic["url"])
-            for j, chap in enumerate(chapters):
-                print(f"[SYNC] [{j+1}/{len(chapters)}] Crawling: {chap['name']}")
+    comics = get_comic_list()
+    for i, comic in enumerate(comics):
+        slug = comic["url"].split("/comic/")[-1]
+        key = f"tranh18x/comics/{slug}.json"
+        existing = read_from_r2(key) or {
+            "name": comic["name"],
+            "image": comic["image"],
+            "url": comic["url"],
+            "chapters": []
+        }
+
+        existing_chapter_urls = {c['url'] for c in existing.get("chapters", [])}
+
+        print(f"[SYNC] [{i+1}/{len(comics)}] Crawling: {comic['name']}")
+        chapters = get_chapters(comic["url"])
+        for j, chap in enumerate(chapters):
+            if chap["url"] in existing_chapter_urls:
+                print(f"[SKIP]    [{j+1}/{len(chapters)}] Chapter exists: {chap['name']}")
+                continue
+            print(f"[SYNC]    [{j+1}/{len(chapters)}] Crawling chapter: {chap['name']}")
+            try:
                 images = get_images(chap["url"])
-                comic_data["chapters"].append({
+                existing["chapters"].append({
                     "name": chap["name"],
                     "url": chap["url"],
                     "images": images
                 })
-            result.append(comic_data)
-    
-        key = "tranh18x/full_catalog.json"
-        url = upload_to_r2(key, {"total": len(result), "comics": result})
-        return jsonify({"stored_url": url, "total": len(result)})
-    except Exception as e:
-        print(f"[SYNC] {e}")
+                upload_to_r2(key, existing)
+            except Exception as e:
+                print(f"[ERROR] Failed to crawl chapter {chap['name']}: {e}")
 
-# Tự chạy crawl sau khi server start
-def run_background_crawler():
-    print("[INFO] Starting background sync_all()")
-    try:
-        sync_all()
-        print("[INFO] Sync finished")
-    except Exception as e:
-        print(f"[ERROR] Sync failed: {e}")
+@app.route("/api/tranh18x-sync", methods=["POST"])
+def sync_all_route():
+    threading.Thread(target=sync_all).start()
+    return jsonify({"status": "started"})
 
 if __name__ == "__main__":
-    threading.Thread(target=run_background_crawler).start()
+    threading.Thread(target=sync_all).start()
     app.run(host="0.0.0.0", port=8000)
