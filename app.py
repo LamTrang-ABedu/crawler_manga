@@ -23,7 +23,8 @@ s3 = boto3.client(
     's3',
     endpoint_url=R2_ENDPOINT,
     aws_access_key_id=R2_ACCESS_KEY,
-    aws_secret_access_key=R2_SECRET_KEY
+    aws_secret_access_key=R2_SECRET_KEY,
+    region_name='auto'
 )
 
 def upload_to_r2(key, data):
