@@ -6,6 +6,7 @@ import json
 import os
 import boto3
 from datetime import datetime
+import threading
 
 app = Flask(__name__)
 
@@ -120,6 +121,15 @@ def sync_all():
     url = upload_to_r2(key, {"total": len(result), "comics": result})
     return jsonify({"stored_url": url, "total": len(result)})
 
+# Tự chạy crawl sau khi server start
+def run_background_crawler():
+    print("[INFO] Starting background sync_all()")
+    try:
+        sync_all()
+        print("[INFO] Sync finished")
+    except Exception as e:
+        print(f"[ERROR] Sync failed: {e}")
+
 if __name__ == "__main__":
-    sync_all()
+    threading.Thread(target=run_background_crawler).start()
     app.run(host="0.0.0.0", port=8000)
