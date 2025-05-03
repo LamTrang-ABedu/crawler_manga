@@ -43,7 +43,7 @@ def read_from_r2(key):
         res = s3.get_object(Bucket=R2_BUCKET, Key=key)
         return json.loads(res['Body'].read().decode('utf-8'))
     except:
-        return None
+        return {"comics": []}
 
 def get_comic_list(max_page=359):
     all_comics = []
@@ -119,20 +119,26 @@ def get_images(chapter_url):
     return image_urls
 
 def sync_all():
+    key = "comics/tranh18.json"
+    full_data = read_from_r2(key)
+    comics_data = full_data.get("comics", [])
+    existing_by_url = {c["url"]: c for c in comics_data}
+
     comics = get_comic_list()
     for i, comic in enumerate(comics):
-        slug = comic["url"].split("/comic/")[-1]
-        key = f"tranh18x/comics/{slug}.json"
-        existing = read_from_r2(key) or {
-            "name": comic["name"],
-            "image": comic["image"],
-            "url": comic["url"],
-            "chapters": []
-        }
-
-        existing_chapter_urls = {c['url'] for c in existing.get("chapters", [])}
-
         print(f"[SYNC] [{i+1}/{len(comics)}] Crawling: {comic['name']}")
+        if comic["url"] in existing_by_url:
+            existing_comic = existing_by_url[comic["url"]]
+            existing_chapter_urls = {c['url'] for c in existing_comic.get("chapters", [])}
+        else:
+            existing_comic = {
+                "name": comic["name"],
+                "image": comic["image"],
+                "url": comic["url"],
+                "chapters": []
+            }
+            existing_chapter_urls = set()
+
         chapters = get_chapters(comic["url"])
         for j, chap in enumerate(chapters):
             if chap["url"] in existing_chapter_urls:
@@ -141,14 +147,22 @@ def sync_all():
             print(f"[SYNC]    [{j+1}/{len(chapters)}] Crawling chapter: {chap['name']}")
             try:
                 images = get_images(chap["url"])
-                existing["chapters"].append({
+                existing_comic["chapters"].append({
                     "name": chap["name"],
                     "url": chap["url"],
                     "images": images
                 })
-                upload_to_r2(key, existing)
             except Exception as e:
                 print(f"[ERROR] Failed to crawl chapter {chap['name']}: {e}")
+
+        # update or append comic
+        if comic["url"] in existing_by_url:
+            existing_by_url[comic["url"]] = existing_comic
+        else:
+            comics_data.append(existing_comic)
+            existing_by_url[comic["url"]] = existing_comic
+
+        upload_to_r2(key, {"comics": comics_data})
 
 @app.route("/api/tranh18x-sync", methods=["POST"])
 def sync_all_route():
