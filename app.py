@@ -26,15 +26,18 @@ s3 = boto3.client(
 )
 
 def upload_to_r2(key, data):
-    print(f"[UPLOAD] starting uploade to R2: {key}")
-    s3.put_object(
-        Bucket=R2_BUCKET,
-        Key=key,
-        Body=json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'),
-        ContentType='application/json'
-    )
-    print(f"[UPLOAD] Successfully uploaded to R2: {key}")
-    return f"{R2_ENDPOINT}/{R2_BUCKET}/{key}"
+    try:
+        print(f"[UPLOAD] starting uploade to R2: {key}")
+        s3.put_object(
+            Bucket=R2_BUCKET,
+            Key=key,
+            Body=json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'),
+            ContentType='application/json'
+        )
+        print(f"[UPLOAD] Successfully uploaded to R2: {key}")
+        return f"{R2_ENDPOINT}/{R2_BUCKET}/{key}"
+    except Exception as e:
+        print(f"[UPLOAD ERROR] {e}")
 
 def get_comic_list(max_page=359):
     all_comics = []
@@ -101,29 +104,32 @@ def get_images(chapter_url):
 
 def sync_all():
     result = []
-    comics = get_comic_list()
-    for i, comic in enumerate(comics):
-        print(f"[SYNC] [{i+1}/{len(comics)}] Crawling: {comic['name']}")
-        comic_data = {
-            "name": comic["name"],
-            "image": comic["image"],
-            "url": comic["url"],
-            "chapters": []
-        }
-        chapters = get_chapters(comic["url"])
-        for j, chap in enumerate(chapters):
-            print(f"[SYNC] [{j+1}/{len(chapters)}] Crawling: {chap['name']}")
-            images = get_images(chap["url"])
-            comic_data["chapters"].append({
-                "name": chap["name"],
-                "url": chap["url"],
-                "images": images
-            })
-        result.append(comic_data)
-
-    key = "tranh18x/full_catalog.json"
-    url = upload_to_r2(key, {"total": len(result), "comics": result})
-    return jsonify({"stored_url": url, "total": len(result)})
+    try:
+        comics = get_comic_list()
+        for i, comic in enumerate(comics):
+            print(f"[SYNC] [{i+1}/{len(comics)}] Crawling: {comic['name']}")
+            comic_data = {
+                "name": comic["name"],
+                "image": comic["image"],
+                "url": comic["url"],
+                "chapters": []
+            }
+            chapters = get_chapters(comic["url"])
+            for j, chap in enumerate(chapters):
+                print(f"[SYNC] [{j+1}/{len(chapters)}] Crawling: {chap['name']}")
+                images = get_images(chap["url"])
+                comic_data["chapters"].append({
+                    "name": chap["name"],
+                    "url": chap["url"],
+                    "images": images
+                })
+            result.append(comic_data)
+    
+        key = "tranh18x/full_catalog.json"
+        url = upload_to_r2(key, {"total": len(result), "comics": result})
+        return jsonify({"stored_url": url, "total": len(result)})
+    except Exception as e:
+        print(f"[SYNC] {e}")
 
 # Tự chạy crawl sau khi server start
 def run_background_crawler():
