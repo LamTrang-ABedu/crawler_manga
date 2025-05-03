@@ -19,21 +19,17 @@ R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
 R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
 R2_BUCKET = 'hopehub-storage'
 
-s3 = boto3.client('s3',
-    endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
-    aws_access_key_id=R2_ACCESS_KEY_ID,
-    aws_secret_access_key=R2_SECRET_ACCESS_KEY
-)
+
+def get_s3_client():
+    return boto3.client(
+        's3',
+        endpoint_url=f"https://{os.getenv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com",
+        aws_access_key_id=os.getenv('R2_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('R2_SECRET_ACCESS_KEY')
+    )
 
 def upload_to_r2(key, data):
-    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
-    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
-    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
-    s3 = boto3.client('s3',
-        endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
-        aws_access_key_id=R2_ACCESS_KEY_ID,
-        aws_secret_access_key=R2_SECRET_ACCESS_KEY
-    )
+    s3 = get_s3_client()
     try:
         s3.put_object(
             Bucket=R2_BUCKET,
@@ -47,6 +43,7 @@ def upload_to_r2(key, data):
 
 def read_from_r2(key):
     try:
+        s3 = get_s3_client()
         res = s3.get_object(Bucket=R2_BUCKET, Key=key)
         return json.loads(res['Body'].read().decode('utf-8'))
     except:
