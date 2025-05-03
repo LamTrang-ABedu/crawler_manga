@@ -26,6 +26,9 @@ s3 = boto3.client('s3',
 )
 
 def upload_to_r2(key, data):
+    R2_ACCESS_KEY_ID = os.getenv('R2_ACCESS_KEY_ID')
+    R2_SECRET_ACCESS_KEY = os.getenv('R2_SECRET_ACCESS_KEY')
+    R2_ACCOUNT_ID = os.getenv('R2_ACCOUNT_ID')
     s3 = boto3.client('s3',
         endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
         aws_access_key_id=R2_ACCESS_KEY_ID,
