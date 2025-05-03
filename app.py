@@ -7,6 +7,8 @@ import json
 import os
 import boto3
 from datetime import datetime
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 
