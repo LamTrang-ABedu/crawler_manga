@@ -15,7 +15,7 @@ HEADERS = {"User-Agent": "Mozilla/5.0"}
 TIMEOUT = 15
 
 R2_BUCKET = "hopehub-storage"
-R2_ENDPOINT = "https://pub-a849c091b30844d5aee5e88b7f6fb5d1.r2.cloudflarestorage.com"
+R2_ENDPOINT = "https://c9ac3686ee9b83a90c8f01bd6cd077fa.r2.cloudflarestorage.com"
 R2_ACCESS_KEY = os.getenv("R2_ACCESS_KEY")
 R2_SECRET_KEY = os.getenv("R2_SECRET_KEY")
 
