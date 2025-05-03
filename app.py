@@ -43,7 +43,7 @@ def get_comic_list(max_page=359):
     all_comics = []
     for page in range(1, max_page + 1):
         url = f"{BASE_URL}/comics?page={page}"
-        res = requests.get(url, headers=HEADERS)
+        res = requests.get(url, headers=HEADERS, timeout=15)
         if res.status_code != 200:
             break
 
@@ -67,7 +67,7 @@ def get_comic_list(max_page=359):
     return all_comics
 
 def get_chapters(comic_url):
-    res = requests.get(comic_url, headers=HEADERS)
+    res = requests.get(comic_url, headers=HEADERS, timeout=15)
     if res.status_code != 200:
         return []
 
@@ -86,21 +86,24 @@ def get_chapters(comic_url):
     return chapters
 
 def get_images(chapter_url):
-    res = requests.get(chapter_url, headers=HEADERS)
-    if res.status_code != 200:
-        return []
-
-    soup = BeautifulSoup(res.text, "html.parser")
-    img_tags = soup.select("div.comiclist div.comicpage img.lazy")
-    image_urls = []
-    for img in img_tags:
-        raw_url = img.get("data-original", "")
-        if "?u=" in raw_url:
-            true_url = raw_url.split("?u=")[-1]
-        else:
-            true_url = raw_url
-        image_urls.append(true_url)
-    return image_urls
+    try:
+        res = requests.get(chapter_url, headers=HEADERS, timeout=15)
+        if res.status_code != 200:
+            return []
+    
+        soup = BeautifulSoup(res.text, "html.parser")
+        img_tags = soup.select("div.comiclist div.comicpage img.lazy")
+        image_urls = []
+        for img in img_tags:
+            raw_url = img.get("data-original", "")
+            if "?u=" in raw_url:
+                true_url = raw_url.split("?u=")[-1]
+            else:
+                true_url = raw_url
+            image_urls.append(true_url)
+        return image_urls
+    except Exception as e:
+        print(f"[ERROR] Failed to crawl chapter {chap['name']}: {e}")
 
 def sync_all():
     result = []
