@@ -1,0 +1,12 @@
+[Unit]
+Description=HopeHub crawler manga service
+After=network.target
+
+[Service]
+ExecStart=/opt/hopehub/crawler_manga/run.sh
+WorkingDirectory=/opt/hopehub/crawler_manga
+Restart=always
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target
