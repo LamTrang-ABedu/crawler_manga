@@ -6,7 +6,7 @@ from .common import slugify, read_from_r2, upload_to_r2
 BASE_URL = "https://tranh18x.com"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 TIMEOUT = 15
-INDEX_KEY = "comics/index.json"
+INDEX_KEY = "comics/tranh18/index.json"
 COMIC_DIR = "comics/tranh18/"
 
 def get_comic_list(max_page=100):

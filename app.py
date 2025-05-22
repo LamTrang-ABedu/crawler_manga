@@ -1,14 +1,15 @@
 import threading
 from flask import Flask, jsonify, request
-from utils import mimihentai, tranh18
+from utils import mimihentai, tranh18, metruyencv
 
 app = Flask(__name__)
 
 # --- TỰ ĐỘNG CRAWL KHI APP START ---
 def auto_crawl_on_start():
     # Crawl song song các nguồn, không block main thread
-    threading.Thread(target=mimihentai.sync_all_manga, daemon=True).start()
-    threading.Thread(target=tranh18.sync_all_comics, daemon=True).start()
+    threading.Thread(target=metruyencv.sync_books, daemon=True).start()
+    # threading.Thread(target=mimihentai.sync_all_manga, daemon=True).start()
+    # threading.Thread(target=tranh18.sync_all_comics, daemon=True).start()
 
 # Gọi auto_crawl khi app được import (chạy trên Render)
 auto_crawl_on_start()

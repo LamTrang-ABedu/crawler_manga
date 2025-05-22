@@ -4,7 +4,7 @@ from .common import slugify, read_from_r2, upload_to_r2
 BASE_URL = "https://mimihentai.com"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 TIMEOUT = 15
-INDEX_KEY = "comics/index_mimihentai.json"
+INDEX_KEY = "comics/mimihentai/index.json"
 COMIC_DIR = "comics/mimihentai/"
 
 def get_manga_list():
@@ -34,9 +34,7 @@ def get_manga_list():
 
 def get_chapters(manga_id):
     try:
-        url = f"{BASE_URL}/api/v1/chapter?mangaId={manga_id}"
-        for _ in range(2):
-            requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        url = f"{BASE_URL}/api/v1/manga/gallery/{manga_id}"
         res = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
         return res.json()
     except:
@@ -44,7 +42,7 @@ def get_chapters(manga_id):
 
 def get_images(chapter_id):
     try:
-        url = f"{BASE_URL}/api/v1/chapter?id={chapter_id}"
+        url = f"{BASE_URL}/api/v1/manga/chapter?id={chapter_id}"
         res = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
         return res.json().get("pages", [])
     except:
@@ -58,10 +56,12 @@ def sync_one_manga(manga, existing_slugs):
     }
     known_ids = {c["id"] for c in detail_data.get("chapters", [])}
     chapters = get_chapters(manga["id"])
+    print(f"[INFO] Found {len(chapters)} chapters for {manga['title']}")
     for chap in chapters:
         if chap["id"] in known_ids:
             continue
         images = get_images(chap["id"])
+        print(f"[INFO] Found {len(images)} images for chapter {chap['id']}")
         detail_data["chapters"].append({
             "name": chap.get("title", f"Chap {chap['id']}"),
             "id": chap["id"],
