@@ -3,10 +3,15 @@ import json
 import requests
 from tqdm import tqdm
 from bs4 import BeautifulSoup
-
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+import time
+import json
 from .common import slugify, upload_to_r2, read_from_r2
 
 R2_PREFIX = "Ebook/metruyencv"
+CUR_DIR = os.path.dirname(os.path.abspath(__file__))
+COOKIES_PATH = os.path.join(CUR_DIR, "cookies.json")
 
 # === Crawl danh sách truyện ===
 def crawl_books(limit=20, max_page=769):
@@ -44,7 +49,7 @@ def crawl_chapters(book_id):
     # Nếu đã có trên R2 thì bỏ qua
     existed = read_from_r2(r2_chapter_key)
     if existed:
-        print(f"[SKIP] Chapters {book_id} đã có trên R2.")
+        # print(f"[SKIP] Chapters {book_id} đã có trên R2.")
         return existed
     url = f"https://backend.metruyencv.com/api/chapters?filter%5Bbook_id%5D={book_id}"
     try:
@@ -63,50 +68,62 @@ def crawl_chapters(book_id):
     upload_to_r2(r2_chapter_key, chapters)
     return chapters
 
-def clean_chapter_html(chapter_soup):
-    """Loại bỏ tag canvas, các div rác trong content."""
-    # Xóa tất cả <canvas>
-    for canvas in chapter_soup.find_all('canvas'):
-        canvas.decompose()
-    # Xóa các <div> với id middle-content-*
-    for div in chapter_soup.find_all('div'):
-        if div.get('id', '').startswith('middle-content'):
-            div.decompose()
-    # Giữ lại text, <br>, <b>, <i>, <strong>, <em>
-    allowed_tags = ['br', 'b', 'i', 'strong', 'em', 'p', 'u']
-    for tag in chapter_soup.find_all(True):
-        if tag.name not in allowed_tags:
-            tag.unwrap()
-    # Trả về HTML gọn
-    return str(chapter_soup)
+def get_chapter_content_with_cookies(chapter_url):
+    # Khởi tạo Chrome headless
+    options = Options()
+    options.add_argument("--headless=new")
+    driver = webdriver.Chrome(options=options)
+    driver.get("https://metruyencv.com/")
+    time.sleep(2)
+
+    # Load cookies
+    with open(COOKIES_PATH, "r", encoding="utf-8") as f:
+        cookies = json.load(f)
+    for cookie in cookies:
+        c = {
+            "name": cookie["name"],
+            "value": cookie["value"],
+            "domain": cookie.get("domain", ".metruyencv.com"),
+            "path": cookie.get("path", "/")
+        }
+        driver.add_cookie(c)
+    driver.refresh()
+    time.sleep(2)
+
+    driver.get(chapter_url)
+    time.sleep(2)
+    html = driver.page_source
+    soup = BeautifulSoup(html, "html.parser")
+    content = soup.select_one("#chapter-content")
+    if not content:
+        print("Không tìm thấy nội dung chương, cookie hết hạn hoặc chương bị khóa.")
+        driver.quit()
+        return None, None
+    # Xóa tag rác
+    for tag in content.find_all(["canvas", "div"]):
+        if tag.name == "canvas":
+            tag.decompose()
+        elif tag.get("id", "").startswith("middle-content"):
+            tag.decompose()
+    content_html = content.decode_contents()
+    content_text = content.get_text("\n", strip=True)
+    driver.quit()
+    return content_html, content_text
 
 def crawl_chapter_content(book_link, chapter_index, book_id):
     r2_chap_key = f"Ebook/metruyencv/{book_id}/chuong-{chapter_index}.json"
     # Nếu đã có trên R2 thì bỏ qua
     if read_from_r2(r2_chap_key):
-        print(f"[SKIP] Chapter {book_id} - {chapter_index} đã có trên R2.")
+        # print(f"[SKIP] Chapter {book_id} - {chapter_index} đã có trên R2.")
         return None
     url = f"{book_link}/chuong-{chapter_index}"
-    try:
-        resp = requests.get(url, timeout=20)
-        resp.raise_for_status()
-    except Exception as e:
-        print(f"Error loading chapter {chapter_index} of {book_id}: {e}")
+    content_html, content_text = get_chapter_content_with_cookies(url)
+    if not content_html:
+        print(f"[ERROR] Không lấy được nội dung chương {chapter_index} của {book_id}")
         return None
-    soup = BeautifulSoup(resp.text, "html.parser")
-    content = soup.select_one("#chapter-content")
-    title = soup.select_one("h1")
-    content_html = ""
-    content_text = ""
-    if content:
-        content_html = clean_chapter_html(content)
-        # Lấy text, thay <br> thành \n cho dễ đọc
-        content_text = content_html.replace('<br>', '\n').replace('<br/>', '\n')
-        # Xóa tag còn lại nếu có
-        content_text = BeautifulSoup(content_text, "html.parser").get_text('\n', strip=True)
-    title_text = title.get_text(strip=True) if title else f"Chương {chapter_index}"
+    # Optional: lấy title từ html nếu muốn
     chapter_data = {
-        "title": title_text,
+        "title": f"Chương {chapter_index}",
         "content_html": content_html,
         "content_text": content_text
     }
@@ -114,14 +131,14 @@ def crawl_chapter_content(book_link, chapter_index, book_id):
     return chapter_data
 
 # === Hàm chính: crawl full/update truyện ===
-def sync_all_books(max_page=769, limit=20, chapters_per_book=1, crawl_full_chapters=False):
+def sync_all_books(max_page=769, limit=20, chapters_per_book=1, crawl_full_chapters=True):
     books = crawl_books(limit=limit, max_page=max_page)
-    print(f"[INFO] Found {len(books)} books.")
+    # print(f"[INFO] Found {len(books)} books.")
     # Update index sau khi biết số chương thực tế
     r2_index_key = f"{R2_PREFIX}/index.json"
     for i, book in enumerate(tqdm(books, desc="Crawl chapters")):
         chapters = crawl_chapters(book["id"])
-        print(f"[INFO] Found {len(chapters)} chapters for {book['name']}")
+        # print(f"[INFO] Found {len(chapters)} chapters for {book['name']}")
         books[i]['chapterCount'] = len(chapters)
         # Crawl từng chương
         chaps = chapters if crawl_full_chapters else chapters[:chapters_per_book]
@@ -132,4 +149,4 @@ def sync_all_books(max_page=769, limit=20, chapters_per_book=1, crawl_full_chapt
 
 def sync_books():
     # Crawl 2 page đầu, mỗi truyện 1 chương đầu tiên cho test nhẹ (thay đổi tùy ý)
-    sync_all_books(max_page=2, limit=20, chapters_per_book=1, crawl_full_chapters=False)
+    sync_all_books(crawl_full_chapters=True)

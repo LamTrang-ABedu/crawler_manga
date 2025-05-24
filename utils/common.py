@@ -32,7 +32,7 @@ def upload_to_r2(key, data):
             Body=json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8'),
             ContentType='application/json'
         )
-        print(f"[UPLOAD] {key} OK")
+        # print(f"[UPLOAD] {key} OK")
     except Exception as e:
         print(f"[UPLOAD ERROR] {key}: {e}")
 
