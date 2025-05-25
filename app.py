@@ -5,13 +5,20 @@ from utils import mimihentai, tranh18, metruyencv
 app = Flask(__name__)
 
 # --- TỰ ĐỘNG CRAWL KHI APP START ---
-def auto_crawl_on_start():
-    # Crawl song song các nguồn, không block main thread
-    threading.Thread(target=metruyencv.sync_books, daemon=True).start()
-    # threading.Thread(target=mimihentai.sync_all_manga, daemon=True).start()
-    # threading.Thread(target=tranh18.sync_all_comics, daemon=True).start()
+def crawl_metruyencv_full_batch(batch_size=3, max_page=769, delay=90):
+    # Chia từng batch nhỏ, chạy nối tiếp nhau
+    for start_page in range(1, max_page + 1, batch_size):
+        end_page = min(start_page + batch_size - 1, max_page)
+        print(f"[Metruyencv] Crawling from page {start_page} to {end_page}")
+        metruyencv.crawl_batch(start_page, end_page)
+        time.sleep(delay)  # nghỉ sau mỗi batch
 
-# Gọi auto_crawl khi app được import (chạy trên Render)
+def auto_crawl_on_start():
+    threading.Thread(
+        target=crawl_metruyencv_full_batch, args=(3, 769, 90), daemon=True
+    ).start()
+    # Có thể chạy thêm các nguồn khác song song như cũ nếu muốn
+
 auto_crawl_on_start()
 
 @app.route("/api/crawl", methods=["POST"])
