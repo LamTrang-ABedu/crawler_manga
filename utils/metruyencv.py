@@ -6,6 +6,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 import time
 import random
+import tempfile
 
 from .common import slugify, upload_to_r2, read_from_r2
 
@@ -80,13 +81,17 @@ def crawl_chapters(book_id):
     upload_to_r2(r2_chapter_key, chapters)
     return chapters
 
+
 def crawl_chapter_content_batch(book, chapters):
-    # Dùng 1 Chrome instance cho toàn bộ chương của 1 truyện
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")  # Hạn chế RAM (rất quan trọng cho VPS nhỏ)
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    # Thêm dòng này:
+    user_data_dir = tempfile.mkdtemp()
+    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+
     driver = webdriver.Chrome(options=chrome_options)
     try:
         load_cookies_to_driver(driver)
