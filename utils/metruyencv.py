@@ -88,11 +88,8 @@ def crawl_chapter_content_batch(book, chapters):
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    # Sửa tại đây:
     chrome_options.add_argument(f"--user-data-dir={tempfile.mkdtemp()}")
-    # Thêm dòng này:
-    user_data_dir = tempfile.mkdtemp()
-    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
-
     driver = webdriver.Chrome(options=chrome_options)
     try:
         load_cookies_to_driver(driver)
