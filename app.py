@@ -1,21 +1,13 @@
 import threading
 from flask import Flask, jsonify, request
 from utils import mimihentai, tranh18, metruyencv
+import time
 
 app = Flask(__name__)
 
-# --- TỰ ĐỘNG CRAWL KHI APP START ---
-def crawl_metruyencv_full_batch(batch_size=3, max_page=769, delay=90):
-    # Chia từng batch nhỏ, chạy nối tiếp nhau
-    for start_page in range(1, max_page + 1, batch_size):
-        end_page = min(start_page + batch_size - 1, max_page)
-        print(f"[Metruyencv] Crawling from page {start_page} to {end_page}")
-        metruyencv.crawl_batch(start_page, end_page)
-        time.sleep(delay)  # nghỉ sau mỗi batch
-
 def auto_crawl_on_start():
     threading.Thread(
-        target=crawl_metruyencv_full_batch, args=(3, 769, 90), daemon=True
+        target=metruyencv.crawl_batch, daemon=True
     ).start()
     # Có thể chạy thêm các nguồn khác song song như cũ nếu muốn
 

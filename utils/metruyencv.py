@@ -11,6 +11,7 @@ import tempfile
 from .common import slugify, upload_to_r2, read_from_r2
 
 R2_PREFIX = "Ebook/metruyencv"
+R2_INDEX_KEY = f"{R2_PREFIX}/index.json"
 CUR_DIR = os.path.dirname(os.path.abspath(__file__))
 COOKIES_PATH = os.path.join(CUR_DIR, "cookies.json")
 
@@ -33,37 +34,53 @@ def load_cookies_to_driver(driver):
     driver.refresh()
     time.sleep(1)
 
-def crawl_books(limit=20, max_page=2):  # Chỉ crawl 2 page test thôi, tránh quá tải
-    r2_index_key = f"{R2_PREFIX}/index.json"
-    old_books = {str(book['id']): book for book in read_from_r2(r2_index_key)}
-    all_books = []
-    for page in range(1, max_page + 1):
-        url = f"https://backend.metruyencv.com/api/books?limit={limit}&page={page}"
-        try:
-            resp = requests.get(url, timeout=20)
-            resp.raise_for_status()
-        except Exception as e:
-            print(f"Error at page {page}: {e}")
-            continue
-        js = resp.json()
-        for item in js.get('data', []):
-            book = {
-                "id": item["id"],
-                "name": item["name"],
-                "link": item["link"],
-                "poster": item["poster"].get("150", ""),
-            }
-            if str(book['id']) in old_books and 'chapterCount' in old_books[str(book['id'])]:
-                book['chapterCount'] = old_books[str(book['id'])]['chapterCount']
-            all_books.append(book)
-    upload_to_r2(r2_index_key, all_books)
-    return all_books
+def crawl_books():
+    old_books = read_from_r2(R2_INDEX_KEY) or []
+    # Xoá duplicate theo id, giữ book đầu tiên
+    unique_books = {}
+    for book in old_books:
+            if book["id"] not in unique_books:
+                unique_books[book["id"]] = book
+    final_books = list(unique_books.values())
 
-def crawl_chapters(book_id):
+    upload_to_r2(R2_INDEX_KEY, final_books)
+    return final_books
+    # existing_ids = {book["id"] for book in old_books}
+    # new_books = []
+    # page = 1
+    # while page <= 769:  # Giả sử có 769 trang
+    #     url = f"https://backend.metruyencv.com/api/books?limit=20&page={page}"
+    #     try:
+    #         resp = requests.get(url, timeout=20)
+    #         resp.raise_for_status()
+    #     except Exception as e:
+    #         print(f"Error at page {page}: {e}")
+    #         break
+    #     js = resp.json()
+    #     books = js.get('data', [])
+    #     if not books:  # Giả sử có 769 trang
+    #         break
+    #     for item in books:
+    #         book = {
+    #             "id": item["id"],
+    #             "name": item["name"],
+    #             "link": item["link"],
+    #             "poster": item["poster"].get("150", ""),
+    #         }
+    #         if book["id"] not in existing_ids:
+    #             new_books.append(book)
+    #             existing_ids.add(book["id"])
+    #     print(f"[Crawl Books] Page {page} - {len(new_books)} new books found.")
+    #     page += 1
+    #     time.sleep(1.2 + random.uniform(0, 1.5))  # Thêm sleep tránh crash RAM/network
+
+    # if new_books:
+    #     old_books.extend(new_books)
+    #     upload_to_r2(R2_INDEX_KEY, old_books)
+    # return old_books
+
+def crawl_chapters(book_id=None, all_books=[]):
     r2_chapter_key = f"{R2_PREFIX}/{book_id}/chapters.json"
-    existed = read_from_r2(r2_chapter_key)
-    if existed:
-        return existed
     url = f"https://backend.metruyencv.com/api/chapters?filter%5Bbook_id%5D={book_id}"
     try:
         resp = requests.get(url, timeout=20)
@@ -79,6 +96,13 @@ def crawl_chapters(book_id):
             "name": ch["name"]
         })
     upload_to_r2(r2_chapter_key, chapters)
+    print(f"[Crawl Chapters] Book {book_id} - {len(chapters)} chapters found.")
+    for item in all_books:
+        if item["id"] == book_id:
+            item["chapterCount"] = len(chapters)
+            break
+    upload_to_r2(R2_INDEX_KEY, all_books)
+    time.sleep(1.2 + random.uniform(0, 1.5))  # Thêm sleep tránh crash RAM/network
     return chapters
 
 
@@ -88,8 +112,10 @@ def crawl_chapter_content_batch(book, chapters):
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    # Sửa tại đây:
-    chrome_options.add_argument(f"--user-data-dir={tempfile.mkdtemp()}")
+    # Thêm dòng này:
+    user_data_dir = tempfile.mkdtemp()
+    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
+
     driver = webdriver.Chrome(options=chrome_options)
     try:
         load_cookies_to_driver(driver)
@@ -129,12 +155,18 @@ def crawl_chapter_content_batch(book, chapters):
     finally:
         driver.quit()
 
-def crawl_batch(start_page, end_page, limit=20, chapters_per_book=None):
-    books = crawl_books(limit=limit, max_page=end_page)
+def crawl_batch():
+    batch_size=3
+    max_page=769
+    books = crawl_books()
     # Lấy đúng sách thuộc batch này
-    batch_books = books[(start_page-1)*limit : end_page*limit]
-    for book in batch_books:
-        chapters = crawl_chapters(book["id"])
-        # Crawl tất cả hoặc 1 số chương
-        chaps = chapters if chapters_per_book is None else chapters[:chapters_per_book]
-        crawl_chapter_content_batch(book, chaps)
+    # Chia từng batch nhỏ, chạy nối tiếp nhau
+    for start_page in range(1, max_page + 1, batch_size):
+        end_page = min(start_page + batch_size - 1, max_page)
+        print(f"[Metruyencv] Crawling from page {start_page} to {end_page}")
+        batch_books = books[(start_page-1)*20 : end_page*20]
+        for book in batch_books:
+            chapters = crawl_chapters(book_id=book["id"], all_books=books)
+            # Crawl tất cả hoặc 1 số chương
+            crawl_chapter_content_batch(book, chapters)
+        time.sleep(90)  # nghỉ sau mỗi batch
